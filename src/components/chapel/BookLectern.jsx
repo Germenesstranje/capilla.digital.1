@@ -18,6 +18,12 @@ const PREFETCH_DAYS = 2;
 // Cache in memory so navigating back never re-fetches
 const memoryCache = {};
 
+// Convert YYYY-MM-DD to D-M-YYYY for dominicos.org URLs
+function toDominicosUrl(dateKey) {
+  const [y, m, d] = dateKey.split('-');
+  return `https://www.dominicos.org/predicacion/evangelio-del-dia/${parseInt(d)}-${parseInt(m)}-${y}`;
+}
+
 async function fetchOrCacheReadings(dateKey, formatted) {
   // 1. Memory hit
   if (memoryCache[dateKey]) return memoryCache[dateKey];
@@ -39,15 +45,21 @@ async function fetchOrCacheReadings(dateKey, formatted) {
   }
 
   // 3. LLM fetch
+  const dominicosBase = toDominicosUrl(dateKey);
   const result = await base44.integrations.Core.InvokeLLM({
-    prompt: `Eres un experto en liturgia católica apostólica romana. Dame las lecturas del día ${formatted} según el rito romano ordinario actual. Incluye:
-1. Primera lectura (libro, capítulo y versículos, y el texto completo)
-2. Salmo responsorial (número y estribillo completo)
-3. Segunda lectura si aplica (libro, capítulo y versículos, y el texto)
-4. Evangelio (libro, capítulo y versículos, y el texto completo)
-5. Una breve reflexión/homilía de 3-4 párrafos inspirada en el estilo del Obispo Munilla.
+    prompt: `Extrae las lecturas litúrgicas del día ${formatted} desde estas URLs de dominicos.org:
+- Lecturas: ${dominicosBase}/lecturas/
+- Comentario bíblico (reflexión): ${dominicosBase}/comentario-biblico/
 
-Responde en español. Sé preciso con las lecturas del calendario litúrgico.`,
+Extrae y devuelve exactamente:
+1. El día litúrgico (ej: "VI Domingo de Pascua")
+2. Primera lectura: referencia completa (ej: "Hch 8, 5-8") y texto íntegro
+3. Salmo responsorial: referencia y estribillo
+4. Segunda lectura si existe: referencia completa y texto íntegro
+5. Evangelio: referencia completa y texto íntegro
+6. Reflexión/homilía: el comentario bíblico completo de dominicos.org
+
+Devuelve el texto exacto tal como aparece en el sitio, en español.`,
     response_json_schema: {
       type: 'object',
       properties: {
@@ -72,7 +84,8 @@ Responde en español. Sé preciso con las lecturas del calendario litúrgico.`,
       },
     },
     add_context_from_internet: true,
-  });
+    model: 'gemini_3_flash',
+    });
 
   // 4. Persist to database so future loads are instant
   base44.entities.Reading.create({
@@ -194,12 +207,12 @@ export default function BookLectern({ onLookUp }) {
 
       {/* Source link */}
       <a
-        href="https://www.youtube.com/@EnTiConfio_ObispoMunilla"
+        href="https://www.dominicos.org/predicacion/evangelio-del-dia/hoy/"
         target="_blank"
         rel="noopener noreferrer"
         className="absolute top-6 right-6 text-xs text-amber-600 hover:text-amber-800 font-body underline z-10"
       >
-        Fuente: Obispo Munilla
+        Fuente: Dominicos.org
       </a>
 
       {/* Lectern image */}
@@ -298,7 +311,7 @@ export default function BookLectern({ onLookUp }) {
                   {/* Homily */}
                   {readings.homily && (
                     <section className="bg-amber-50 border border-amber-200 rounded-lg p-5">
-                      <h3 className="font-heading text-base text-amber-800 mb-3">Reflexión / Homilía</h3>
+                      <h3 className="font-heading text-base text-amber-800 mb-3">Comentario Bíblico · Dominicos.org</h3>
                       <p className="text-sm leading-relaxed whitespace-pre-line">{readings.homily}</p>
                     </section>
                   )}
